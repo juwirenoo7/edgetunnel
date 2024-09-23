@@ -4,8 +4,8 @@ import { connect } from 'cloudflare:sockets';
 
 // How to generate your own UUID:
 // [Windows] Press "Win + R", input cmd and run:  Powershell -NoExit -Command "[guid]::NewGuid()"
-let userID = '90cd4a77-141a-43c9-991b-08263cfe9c10';
-
+let userID =
+'90cd4a77-141a-43c9-991b-08263cfe9c10';
 let proxyIP = '';// 小白勿动，该地址并不影响你的网速，这是给CF代理使用的。'cdn.xn--b6gac.eu.org, cdn-all.xn--b6gac.eu.org, workers.cloudflare.cyou'
 
 let sub = '';// 留空则使用内置订阅
@@ -180,9 +180,59 @@ export default {
 					return new Response('Not found', { status: 404 });
 				}
 			} else {
-				proxyIP = url.searchParams.get('proxyip') || proxyIP;
-				if (new RegExp('/proxyip=', 'i').test(url.pathname)) proxyIP = url.pathname.toLowerCase().split('/proxyip=')[1];
-				else if (new RegExp('/proxyip.', 'i').test(url.pathname)) proxyIP = `proxyip.${url.pathname.toLowerCase().split("/proxyip.")[1]}`;
+
+async fetch(request, env, ctx) {
+    try {
+        const url = new URL(request.url);
+        let proxyIP = env.PROXYIP || ''; // 初始化 proxyIP
+
+        // 1. 从查询参数 '?proxyip=' 中获取 proxyIP
+        proxyIP = url.searchParams.get('proxyip') || proxyIP;
+
+        // 2. 匹配 /proxyip= 格式，提取 '=' 后面的部分
+        if (new RegExp('/proxyip=', 'i').test(url.pathname)) {
+            proxyIP = url.pathname.toLowerCase().split('/proxyip=')[1];
+        }
+        // 3. 匹配 /proxyip. 格式，提取 '.' 后面的部分
+        else if (new RegExp('/proxyip.', 'i').test(url.pathname)) {
+            proxyIP = `proxyip.${url.pathname.toLowerCase().split("/proxyip.")[1]}`;
+        }
+        // 4. 匹配 IP 地址或域名
+        else if (new RegExp('/(\\d{1,3}\\.){3}\\d{1,3}$', 'i').test(url.pathname) || 
+                 new RegExp('/[a-z0-9.-]+\\.[a-z]{2,}$', 'i').test(url.pathname)) {
+            proxyIP = url.pathname.substring(1); // 提取 '/' 后的 IP 或域名
+        }
+        // 5. 匹配查询参数 '?'
+        else if (url.search) {
+            let suffix = url.search.slice(1); // 去掉 '?'
+            if (suffix) {
+                proxyIP = `proxyip.${suffix}`;
+            }
+        }
+
+        // 如果没有找到 proxyIP，返回错误
+        if (!proxyIP) {
+            return new Response("Invalid proxy IP or URL", { status: 400 });
+        }
+
+        // 发起代理请求
+        return await fetchFromProxy(proxyIP, request);
+    } catch (err) {
+        return new Response(err.toString());
+    }
+}
+
+} else if (new RegExp('/(\\d{1,3}\\.){3}\\d{1,3}$', 'i').test(url.pathname) || new RegExp('/[a-z0-9.-]+\\.[a-z]{2,}$', 'i').test(url.pathname)) {
+    // 匹配路径中的 IP 地址或者其他域名格式
+    let potentialProxyIP = url.pathname.substring(1); // 去掉前导 '/'
+    proxyIP = potentialProxyIP;
+} else if (url.search) {
+    // 如果路径中没有 '/proxyip=' 或 '/proxyip.'，检查是否有 '?'
+    let suffix = url.search.slice(1); // 提取 '?' 后面的部分
+    if (suffix) {
+        proxyIP = `proxyip.${suffix}`;
+    }
+}
 				
 				socks5Address = url.searchParams.get('socks5') || socks5Address;
 				if (new RegExp('/socks5=', 'i').test(url.pathname)) socks5Address = url.pathname.split('5=')[1];
